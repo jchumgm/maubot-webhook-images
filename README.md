@@ -25,9 +25,10 @@ The client selected as `Primary user` will be used to send the messages.
 Each instance of this plugin provides a single webhook.
 To create multiple webhooks, just instantiate this plugin multiple times.
 
+### Sending Text Messages
 
+Here is a basic example of how to send a formatted text message to a Matrix room.
 
-## Example
 ```yaml
 path: /send
 method: POST
@@ -45,9 +46,7 @@ force_json: false
 ignore_empty_messages: false
 ```
 
-```bash
-$ curl -X POST "https://your.maubot.instance/_matrix/maubot/plugin/<instance ID>/send-image?filename=gC062p7"
-```
+You can trigger this webhook with the following `curl` command:
 
 ```bash
 $ curl -X POST -H "Content-Type: application/json" -u abc:123 https://your.maubot.instance/_matrix/maubot/plugin/<instance ID>/send -d '
@@ -60,7 +59,32 @@ $ curl -X POST -H "Content-Type: application/json" -u abc:123 https://your.maubo
 }'
 ```
 
+This will result in the following message being sent to the room:
+
 ![Screenshot of the resulting message](https://screens.totally.rip/2023/02/63e0f862ca140.png)
+
+### Sending Images
+
+To send an image, you need to configure the webhook with `message_type: m.image` and provide an image URL in the `image` field. The `message` field will be used as the alt-text for the image.
+
+Here is an example configuration:
+
+```yaml
+path: /send-image
+method: POST
+room: '!AAAAAAAAAAAAAAAAAA:example.com'
+message: 'This is an image from Imgur: {{ query.filename }}'
+message_type: m.image
+image: 'https://i.imgur.com/{{ query.filename }}.jpeg'
+```
+
+In this example, the image URL is dynamically constructed using a query parameter from the webhook URL. You can trigger this webhook with the following `curl` command:
+
+```bash
+$ curl -X POST "https://your.maubot.instance/_matrix/maubot/plugin/<instance ID>/send-image?filename=gC062p7"
+```
+
+This will send the image from `https://i.imgur.com/gC062p7.jpeg` to the specified room with the alt-text "This is an image from Imgur: gC062p7".
 
 
 
@@ -112,6 +136,13 @@ The type the message is sent as.
 Supports formatting [as defined below](#formatting), but must evaluate to one of:
 - `m.text` (default)
 - `m.notice`
+- `m.image`
+
+
+### `image`
+The URL of the image to send.
+This is only used when `message_type` is `m.image`.
+Supports formatting [as defined below](#formatting).
 
 
 ### `auth_type`
