@@ -4,6 +4,7 @@ room: "!AAAAAAAAAAAAAAAAAA:example.com"
 message: "Hello world!"
 message_format: "plaintext"
 message_type: "m.text"
+max_image_size: 5M
 auth_type:
 auth_token:
 force_json: false

@@ -145,6 +145,12 @@ This is only used when `message_type` is `m.image`.
 Supports formatting [as defined below](#formatting).
 
 
+### `max_image_size`
+The maximum size of the image to download, in bytes.
+This can be a number or a human-readable string (e.g., "5M" for 5 megabytes).
+The default is "5M".
+
+
 ### `auth_type`
 This can be used to protect a webhook against unauthorized access.
 Can be one of `Basic` for HTTP basic auth with username and password or `Bearer` for bearer token auth.

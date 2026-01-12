@@ -21,18 +21,55 @@
 from typing import Dict, List, Optional, Type, Union
 
 from maubot import Plugin, PluginWebApp
-from aiohttp import hdrs, BasicAuth
+from aiohttp import hdrs, BasicAuth, ClientTimeout
 from aiohttp.web import Request, Response
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
 import mautrix.types
 import jinja2
 import re
+import shlex
+import socket
+from ipaddress import ip_address
+from urllib.parse import urlparse
+
+
+def is_ip_private(ip: str) -> bool:
+    """Checks if a given IP address is private."""
+    return ip_address(ip).is_private or ip_address(ip).is_loopback
+
+
+def is_hostname_private(hostname: str) -> bool:
+    """Checks if a given hostname resolves to a private IP address."""
+    try:
+        for info in socket.getaddrinfo(hostname, 0, socket.AF_UNSPEC):
+            ip = info[4][0]
+            if is_ip_private(ip):
+                return True
+    except socket.gaierror:
+        # If the hostname can't be resolved, it's not a private IP
+        return False
+    return False
 
 
 def escape_md(value: str) -> str:
     # based on https://github.com/tulir/gomuks/blob/e0f107f0285936964afeeec8f4efbb312d9e3c22/web/src/util/markdown.ts
     # replacing < and > is not necessary as HTML autoescaping is performed anyway
     return re.sub(r'([\\`*_[\]])', r'\\\1', value)
+
+
+def _str_to_bytes(s: str) -> int:
+    s = s.strip()
+    last = s[-1].upper()
+    num = float(s[:-1])
+    if last == "B":
+        return int(num)
+    elif last == "K":
+        return int(num * 1024)
+    elif last == "M":
+        return int(num * 1024 * 1024)
+    elif last == "G":
+        return int(num * 1024 * 1024 * 1024)
+    return int(s)
 
 
 class Config(BaseProxyConfig):
@@ -57,6 +94,7 @@ class Config(BaseProxyConfig):
         helper.copy("message")
         helper.copy("message_format")
         helper.copy("message_type")
+        helper.copy("max_image_size")
         helper.copy("auth_type")
         helper.copy("auth_token")
         helper.copy("force_json")
@@ -86,6 +124,7 @@ class Config(BaseProxyConfig):
             if auth_type == "Basic" and ":" not in auth_token:
                 raise ValueError(f"Invalid auth_token '{auth_token}' specified! For HTTP basic auth, it must contain "
                                  "a username and a password, separated by a colon (<username>:<password>).")
+        helper.base["max_image_size"] = _str_to_bytes(helper.base["max_image_size"])
 
 
 class WebhookPlugin(Plugin):
@@ -221,7 +260,44 @@ class WebhookPlugin(Plugin):
 
         self.log.info(f"Sending message ({msgtype}) to room {room}: {message}")
         try:
-            if self.config["message_format"] == 'markdown':
+            if msgtype == mautrix.types.MessageType.IMAGE:
+                image: Union[str, Response] = self.render_template("image", template_variables)
+                if isinstance(image, Response):
+                    return image
+
+                parsed_url = urlparse(image)
+                if not parsed_url.scheme or not parsed_url.netloc:
+                    return Response(status=400, text="Invalid image URL")
+                if is_hostname_private(parsed_url.hostname):
+                    return Response(status=400, text="Image URL points to a private IP address")
+
+                try:
+                    async with self.http.get(image, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                        if resp.status != 200:
+                            error_message = f"Failed to fetch image from {image}: {resp.status} {resp.reason}"
+                            self.log.error(error_message)
+                            return Response(status=500, text=error_message)
+
+                        if resp.content_length and resp.content_length > self.config["max_image_size"]:
+                            return Response(status=400, text=f"Image size exceeds the configured limit of {self.config['max_image_size']} bytes")
+
+                        image_data = await resp.read()
+
+                except Exception as e:
+                    error_message = f"Failed to fetch image from {image}: {e}"
+                    self.log.error(error_message)
+                    return Response(status=500, text=error_message)
+
+                try:
+                    mxc_uri = await self.client.upload_media(image_data)
+                except Exception as e:
+                    error_message = f"Failed to upload image: {e}"
+                    self.log.error(error_message)
+                    return Response(status=500, text=error_message)
+
+                await self.client.send_image(room, url=mxc_uri, body=message)
+
+            elif self.config["message_format"] == 'markdown':
                 await self.client.send_markdown(room, message, msgtype=msgtype)
             elif self.config["message_format"] == 'html':
                 await self.client.send_text(room, None, html=message, msgtype=msgtype)
