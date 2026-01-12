@@ -46,6 +46,10 @@ ignore_empty_messages: false
 ```
 
 ```bash
+$ curl -X POST "https://your.maubot.instance/_matrix/maubot/plugin/<instance ID>/send-image?filename=gC062p7"
+```
+
+```bash
 $ curl -X POST -H "Content-Type: application/json" -u abc:123 https://your.maubot.instance/_matrix/maubot/plugin/<instance ID>/send -d '
 {
     "title": "This is a test message:",
@@ -169,9 +173,16 @@ Optionally use the `-u` switch to upload it to your maubot instance, if configur
 mbc build -u
 ```
 
-Since `.mbp` files are just zip archives with a different name, you can also just zip the files of this repository:
-```
+Since `.mbp` files are just zip archives with a different name, you can also just zip the files of this repository.
+
+Using `zip`:
+```bash
 zip -9r webhook.mbp *
+```
+
+Using 7-Zip:
+```bash
+7z a -tzip webhook.mbp *
 ```
 
 
